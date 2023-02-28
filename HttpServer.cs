@@ -117,21 +117,21 @@ namespace HttpListenerExample
         }
 
         public static string GetIndexPage() {
-           return File.ReadAllText("C:\\Users\\wannaasbird\\source\\repos\\SimpleHttpServer\\index.html");
+           return File.ReadAllText(System.Environment.CurrentDirectory + "/index.html");
         }
         public static string GetAccountPage()
         {
-            return File.ReadAllText("C:\\Users\\wannaasbird\\source\\repos\\SimpleHttpServer\\account.html");
+            return File.ReadAllText(System.Environment.CurrentDirectory + "/account.html");
         }
 
         public static string Get404Page()
         {
-            return File.ReadAllText("C:\\Users\\wannaasbird\\source\\repos\\SimpleHttpServer\\404.html");
+            return File.ReadAllText(System.Environment.CurrentDirectory + "/404.html");
         }
 
         public static string GetInvalidPage()
         {
-            return File.ReadAllText("C:\\Users\\wannaasbird\\source\\repos\\SimpleHttpServer\\invalid.html");
+            return File.ReadAllText(System.Environment.CurrentDirectory + "/invalid.html");
         }
 
         public static void Main(string[] args)
