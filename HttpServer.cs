@@ -1,5 +1,6 @@
 using System.Text;
 using System.Net;
+using System;
 
 namespace HttpListenerExample
 {
@@ -32,10 +33,10 @@ namespace HttpListenerExample
                     Stream body = req.InputStream;
                     Encoding encoding = req.ContentEncoding;
                     StreamReader reader = new StreamReader(body, encoding);
-      
+
                     Console.WriteLine("Start of client data:");
                     string request = reader.ReadToEnd();
-                    string[] info= request.Split('&');
+                    string[] info = request.Split('&');
                     login = info[0].Split('=')[1];
                     password = info[1].Split('=')[1];
                     Console.WriteLine(request);
@@ -45,33 +46,36 @@ namespace HttpListenerExample
 
                     if (login.Equals("admin") && password.Equals("123"))
                     {
-                        Cookie cookie = new Cookie();
-                        cookie.Value = login+"&"+password;
+                        Cookie cookie = new Cookie("admin", "adminauth");
                         resp.Cookies.Add(cookie);
 
                         page = getPage("/account.html");
+                        resp.Redirect(url+"account");
                     }
-                    else 
+                    else
                     {
                         page = getPage("/invalid.html");
                     }
                 }
 
+      
                 if ((req.HttpMethod == "GET") && (req.Url.AbsolutePath == "/account"))
                 {
-                    if (login != null && password != null) 
+                    if (isAuthorized(req))
                     {
                         page = getPage("/account.html");
-                    } else 
-                    {
-                        page = getPage("/404.html");
+                        resp.Redirect(url + "account");
                     }
+                    else {
+                        resp.Redirect(url);
+                    } 
                 }
 
                 if ((req.HttpMethod == "GET") && (req.Url.AbsolutePath == "/"))
                 {
                     page = getPage("/index.html");
                 }
+                
 
                 byte[] data = Encoding.UTF8.GetBytes(page);
                 resp.ContentType = "text/html";
@@ -80,8 +84,18 @@ namespace HttpListenerExample
 
                 await resp.OutputStream.WriteAsync(data, 0, data.Length);
                 resp.Close();
-            }
+            } 
         }
+
+        public static bool isAuthorized(HttpListenerRequest req)
+        {
+            if (req.Cookies["admin"] != null)
+            {
+                return true;
+            }
+
+            return false;
+        }   
 
         public static string getPage(string path) 
         {
