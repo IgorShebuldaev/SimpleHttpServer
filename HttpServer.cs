@@ -1,6 +1,8 @@
 using System.Text;
 using System.Net;
 using System;
+using System.Threading.Tasks;
+using System.IO;
 
 namespace HttpListenerExample
 {
@@ -13,7 +15,7 @@ namespace HttpListenerExample
 
         public static async Task HandleIncomingConnections()
         {
-            string page = getPage("/index.html");
+            string page = GetPage("/index.html");
 
             while (true)
             {
@@ -27,6 +29,43 @@ namespace HttpListenerExample
                 Console.WriteLine(req.UserHostName);
                 Console.WriteLine(req.UserAgent);
                 Console.WriteLine();
+
+                if ((req.HttpMethod == "GET") && (req.Url.AbsolutePath == "/"))
+                {
+                    page = GetPage("/index.html");
+                }
+
+                if ((req.HttpMethod == "GET") && (req.Url.AbsolutePath == "/login"))
+                {
+                    page = GetPage("/login.html");
+                }
+
+                if ((req.HttpMethod == "GET") && (req.Url.AbsolutePath == "/invalid"))
+                {
+                    page = GetPage("/invalid.html");
+                }
+
+                if ((req.HttpMethod == "GET") && (req.Url.AbsolutePath == "/account"))
+                {
+                    if (IsAuthorized(req))
+                    {
+                        page = GetPage("/account.html");
+                    }
+                    else {
+                        resp.Redirect(url);
+                    } 
+                }
+
+                if ((req.HttpMethod == "GET") && (req.Url.AbsolutePath == "/logout"))
+                {
+                    Cookie cookie = req.Cookies["admin"];
+                   
+                    cookie.Expires = DateTime.Now.AddDays(-1);
+                    cookie.Value = null;
+                    resp.SetCookie(cookie);
+
+                    resp.Redirect("/");
+                }
 
                 if ((req.HttpMethod == "POST") && (req.Url.AbsolutePath == "/authorization"))
                 {
@@ -49,33 +88,13 @@ namespace HttpListenerExample
                         Cookie cookie = new Cookie("admin", "adminauth");
                         resp.Cookies.Add(cookie);
 
-                        page = getPage("/account.html");
-                        resp.Redirect(url+"account");
+                        resp.Redirect("/account");
                     }
                     else
                     {
-                        page = getPage("/invalid.html");
+                        resp.Redirect("/invalid");
                     }
                 }
-
-      
-                if ((req.HttpMethod == "GET") && (req.Url.AbsolutePath == "/account"))
-                {
-                    if (isAuthorized(req))
-                    {
-                        page = getPage("/account.html");
-                        resp.Redirect(url + "account");
-                    }
-                    else {
-                        resp.Redirect(url);
-                    } 
-                }
-
-                if ((req.HttpMethod == "GET") && (req.Url.AbsolutePath == "/"))
-                {
-                    page = getPage("/index.html");
-                }
-                
 
                 byte[] data = Encoding.UTF8.GetBytes(page);
                 resp.ContentType = "text/html";
@@ -87,17 +106,12 @@ namespace HttpListenerExample
             } 
         }
 
-        public static bool isAuthorized(HttpListenerRequest req)
+        public static bool IsAuthorized(HttpListenerRequest req)
         {
-            if (req.Cookies["admin"] != null)
-            {
-                return true;
-            }
-
-            return false;
+            return req.Cookies["admin"] != null;
         }   
 
-        public static string getPage(string path) 
+        public static string GetPage(string path) 
         {
            return File.ReadAllText(Environment.CurrentDirectory + path);
         }
