@@ -1,22 +1,23 @@
 using System.Text;
 using System.Net;
-using System;
-using System.Threading.Tasks;
-using System.IO;
 
 namespace HttpListenerExample
 {
     class HttpServer
     {
         public static HttpListener listener;
-        public static string url = "http://localhost:8000/";
-        public static string login = "admin";
-        public static string password = "123";
+        public const string URL = "http://localhost:8000/";
+        public const string COOKIE_KEY = "localhost";
+        public static IDictionary<string, string> users = new Dictionary<string, string>
+            {
+                { "admin", "root" },
+                { "user", "123" }
+            };
 
         public static async Task HandleIncomingConnections()
         {
             string page = GetPage("/index.html");
-
+            
             while (true)
             {
                 HttpListenerContext ctx = await listener.GetContextAsync();
@@ -32,17 +33,30 @@ namespace HttpListenerExample
 
                 if ((req.HttpMethod == "GET") && (req.Url.AbsolutePath == "/"))
                 {
-                    page = GetPage("/index.html");
+                    if (IsAuthorized(req))
+                    {
+                        resp.Redirect("/account");
+                    }
+                    else
+                    {
+                        page = GetPage("/index.html");
+                    }   
                 }
 
                 if ((req.HttpMethod == "GET") && (req.Url.AbsolutePath == "/login"))
-                {
-                    page = GetPage("/login.html");
+                {   if (IsAuthorized(req))
+                    {
+                        resp.Redirect("account");
+                    }
+                    else {
+                        page = GetPage("/login.html");
+                    }              
                 }
 
+                //TODO close direct access
                 if ((req.HttpMethod == "GET") && (req.Url.AbsolutePath == "/invalid"))
                 {
-                    page = GetPage("/invalid.html");
+                    page = GetPage("/invalid.html"); 
                 }
 
                 if ((req.HttpMethod == "GET") && (req.Url.AbsolutePath == "/account"))
@@ -52,16 +66,16 @@ namespace HttpListenerExample
                         page = GetPage("/account.html");
                     }
                     else {
-                        resp.Redirect(url);
+                        resp.Redirect(URL);
                     } 
                 }
 
                 if ((req.HttpMethod == "GET") && (req.Url.AbsolutePath == "/logout"))
                 {
-                    Cookie cookie = req.Cookies["admin"];
-                   
-                    cookie.Expires = DateTime.Now.AddDays(-1);
-                    cookie.Value = null;
+                    Cookie cookie = new(COOKIE_KEY, null)
+                    {
+                        Expires = DateTime.Now.AddDays(-1)
+                    };
                     resp.SetCookie(cookie);
 
                     resp.Redirect("/");
@@ -71,29 +85,28 @@ namespace HttpListenerExample
                 {
                     Stream body = req.InputStream;
                     Encoding encoding = req.ContentEncoding;
-                    StreamReader reader = new StreamReader(body, encoding);
+                    StreamReader reader = new(body, encoding);
 
-                    Console.WriteLine("Start of client data:");
                     string request = reader.ReadToEnd();
-                    string[] info = request.Split('&');
-                    login = info[0].Split('=')[1];
-                    password = info[1].Split('=')[1];
-                    Console.WriteLine(request);
-                    Console.WriteLine("End of client data:");
+                    string[] credential = request.Split('&');
+                    string login = credential[0].Split('=')[1];
+                    string password = credential[1].Split('=')[1];
                     body.Close();
                     reader.Close();
 
-                    if (login.Equals("admin") && password.Equals("123"))
+                    if (users.ContainsKey(login))
                     {
-                        Cookie cookie = new Cookie("admin", "adminauth");
-                        resp.Cookies.Add(cookie);
+                        if (users[login].Equals(password))
+                        {
+                            Cookie cookie = new(COOKIE_KEY, login);
+                            resp.Cookies.Add(cookie);
 
-                        resp.Redirect("/account");
-                    }
-                    else
+                            resp.Redirect("/account");
+                        }
+                    } else
                     {
                         resp.Redirect("/invalid");
-                    }
+                    }     
                 }
 
                 byte[] data = Encoding.UTF8.GetBytes(page);
@@ -101,14 +114,14 @@ namespace HttpListenerExample
                 resp.ContentEncoding = Encoding.UTF8;
                 resp.ContentLength64 = data.LongLength;
 
-                await resp.OutputStream.WriteAsync(data, 0, data.Length);
+                await resp.OutputStream.WriteAsync(data);
                 resp.Close();
             } 
         }
 
         public static bool IsAuthorized(HttpListenerRequest req)
         {
-            return req.Cookies["admin"] != null;
+            return req.Cookies[COOKIE_KEY] != null;
         }   
 
         public static string GetPage(string path) 
@@ -116,12 +129,12 @@ namespace HttpListenerExample
            return File.ReadAllText(Environment.CurrentDirectory + path);
         }
 
-        public static void Main(string[] args)
+        public static void Main()
         {
             listener = new HttpListener();
-            listener.Prefixes.Add(url);
+            listener.Prefixes.Add(URL);
             listener.Start();
-            Console.WriteLine("Listening for connections on {0}", url);
+            Console.WriteLine("Listening for connections on {0}", URL);
 
             Task listenTask = HandleIncomingConnections();
             listenTask.GetAwaiter().GetResult();
