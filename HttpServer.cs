@@ -1,85 +1,201 @@
-// Filename:  HttpServer.cs        
-// Author:    Benjamin N. Summerton <define-private-public>        
-// License:   Unlicense (http://unlicense.org/)
-
-using System;
-using System.IO;
 using System.Text;
 using System.Net;
 using System.Threading.Tasks;
+using System;
+using System.IO;
+using System.Collections.Generic;
 
 namespace HttpListenerExample
-{
+{   
+    struct User{
+        public string login;
+        public string password;
+        public User(string login, string password) { 
+            this.login = login;
+            this.password = password;
+        }
+    }
     class HttpServer
     {
         public static HttpListener listener;
-        public static string url = "http://localhost:8000/";
-        public static int pageViews = 0;
-        public static int requestCount = 0;
-            
+        public const string URL = "http://localhost:8000/";
+        public const string COOKIE_KEY = "localhost";
+
         public static async Task HandleIncomingConnections()
         {
-            bool runServer = true;
-
-            // While a user hasn't visited the `shutdown` url, keep on handling requests
-            while (runServer)
+            string page = GetPage("/index.html");
+            IDictionary<string, User> users = new Dictionary<string, User>();
+            
+            while (true)
             {
-                // Will wait here until we hear from a connection
                 HttpListenerContext ctx = await listener.GetContextAsync();
 
-                // Peel out the requests and response objects
                 HttpListenerRequest req = ctx.Request;
                 HttpListenerResponse resp = ctx.Response;
 
-                // Print out some info about the request
-                Console.WriteLine("Request #: {0}", ++requestCount);
                 Console.WriteLine(req.Url.ToString());
                 Console.WriteLine(req.HttpMethod);
                 Console.WriteLine(req.UserHostName);
                 Console.WriteLine(req.UserAgent);
                 Console.WriteLine();
 
-                // If `shutdown` url requested w/ POST, then shutdown the server after serving the page
-                if ((req.HttpMethod == "POST") && (req.Url.AbsolutePath == "/shutdown"))
+                if ((req.HttpMethod == "GET") && (req.Url.AbsolutePath == "/"))
                 {
-                    Console.WriteLine("Shutdown requested");
-                    runServer = false;
+                    if (IsAuthorized(req))
+                    {
+                        resp.Redirect("/account");
+                    }
+                    else
+                    {
+                        page = GetPage("/index.html");
+                    }   
                 }
 
-                // Make sure we don't increment the page views counter if `favicon.ico` is requested
-                if (req.Url.AbsolutePath != "/favicon.ico")
-                    pageViews += 1;
+                if ((req.HttpMethod == "GET") && (req.Url.AbsolutePath == "/account"))
+                {
+                    if (IsAuthorized(req))
+                    {
+                        page = GetPage("/account.html");
+                    }
+                    else {
+                        resp.Redirect(URL);
+                    } 
+                }
 
-                // Write the response info
-                string disableSubmit = !runServer ? "disabled" : "";
-                byte[] data = Encoding.UTF8.GetBytes(String.Format(GetIndexPage(), pageViews, disableSubmit));
+                if ((req.HttpMethod == "GET") && (req.Url.AbsolutePath == "/signin"))
+                {
+                    if (IsAuthorized(req))
+                    {
+                        resp.Redirect("/account");
+                    }
+                    else
+                    {
+                        page = GetPage("/signin.html");
+                    }
+                }
+
+                if ((req.HttpMethod == "POST") && (req.Url.AbsolutePath == "/signin"))
+                {
+                    Stream body = req.InputStream;
+                    Encoding encoding = req.ContentEncoding;
+                    StreamReader reader = new(body, encoding);
+                    bool found = false;
+
+                    string request = reader.ReadToEnd();
+                    string[] credential = request.Split('&');
+                    string login = credential[0].Split('=')[1];
+                    string password = credential[1].Split('=')[1];
+                    body.Close();
+                    reader.Close();
+
+                    foreach (KeyValuePair<string, User> entry in users)
+                    {
+                        if (entry.Value.login.Equals(login))
+                        {
+                            if (entry.Value.password.Equals(password))
+                            {
+                                Cookie cookie = new(COOKIE_KEY, GenerateSession(login));
+                                resp.Cookies.Add(cookie);
+                                found = true;
+                                resp.Redirect("/account");
+                                break;
+                            }
+                        }
+                    }
+
+                    if (!found)
+                    {
+                        resp.Redirect("/invalid");
+                    }      
+                }
+
+                if ((req.HttpMethod == "GET") && (req.Url.AbsolutePath == "/signup"))
+                {
+                    if (IsAuthorized(req))
+                    {
+                        page = GetPage("/account.html");
+                    }
+                    else
+                    {
+                        page = GetPage("/signup.html");
+                    }
+                }
+
+                if ((req.HttpMethod == "POST") && (req.Url.AbsolutePath == "/signup"))
+                {
+                    Stream body = req.InputStream;
+                    Encoding encoding = req.ContentEncoding;
+                    StreamReader reader = new(body, encoding);
+
+                    string request = reader.ReadToEnd();
+                    string[] credential = request.Split('&');
+                    string login = credential[0].Split('=')[1];
+                    string password = credential[1].Split('=')[1];
+                    body.Close();
+                    reader.Close();
+
+                    User newUser = new(login, password);
+                    string sessionId = GenerateSession(login);
+
+                    users.Add(sessionId, newUser);
+                    Cookie cookie = new(COOKIE_KEY, sessionId);
+                    resp.Cookies.Add(cookie);
+
+                    resp.Redirect("/account");
+                }
+
+                if ((req.HttpMethod == "GET") && (req.Url.AbsolutePath == "/logout"))
+                {
+                    Cookie cookie = new(COOKIE_KEY, null)
+                    {
+                        Expires = DateTime.Now.AddDays(-1)
+                    };
+                    resp.SetCookie(cookie);
+
+                    resp.Redirect("/");
+                }
+
+                //TODO close direct access
+                if ((req.HttpMethod == "GET") && (req.Url.AbsolutePath == "/invalid"))
+                {
+                    page = GetPage("/invalid.html");
+                }
+
+                byte[] data = Encoding.UTF8.GetBytes(page);
                 resp.ContentType = "text/html";
                 resp.ContentEncoding = Encoding.UTF8;
                 resp.ContentLength64 = data.LongLength;
 
-                // Write out to the response stream (asynchronously), then close it
-                await resp.OutputStream.WriteAsync(data, 0, data.Length);
+                await resp.OutputStream.WriteAsync(data);
                 resp.Close();
-            }
+            } 
         }
 
-        public static string GetIndexPage() {
-           return File.ReadAllText("index.html");
-        }
-
-        public static void Main(string[] args)
+        public static string GenerateSession(string login)
         {
-            // Create a Http server and start listening for incoming connections
-            listener = new HttpListener();
-            listener.Prefixes.Add(url);
-            listener.Start();
-            Console.WriteLine("Listening for connections on {0}", url);
+            return DateTime.Now.ToString() + login;
+        }
 
-            // Handle requests
+        public static bool IsAuthorized(HttpListenerRequest req)
+        {
+            return req.Cookies[COOKIE_KEY] != null;
+        }   
+
+        public static string GetPage(string path) 
+        {
+           return File.ReadAllText(Environment.CurrentDirectory + path);
+        }
+
+        public static void Main()
+        {
+            listener = new HttpListener();
+            listener.Prefixes.Add(URL);
+            listener.Start();
+            Console.WriteLine("Listening for connections on {0}", URL);
+
             Task listenTask = HandleIncomingConnections();
             listenTask.GetAwaiter().GetResult();
 
-            // Close the listener
             listener.Close();
         }
     }
