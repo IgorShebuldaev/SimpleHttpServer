@@ -1,5 +1,9 @@
 using System.Text;
 using System.Net;
+using System.Threading.Tasks;
+using System;
+using System.IO;
+using System.Collections.Generic;
 
 namespace HttpListenerExample
 {
@@ -8,11 +12,6 @@ namespace HttpListenerExample
         public static HttpListener listener;
         public const string URL = "http://localhost:8000/";
         public const string COOKIE_KEY = "localhost";
-        public static IDictionary<string, string> users = new Dictionary<string, string>
-            {
-                { "admin", "root" },
-                { "user", "123" }
-            };
 
         public static async Task HandleIncomingConnections()
         {
@@ -81,6 +80,41 @@ namespace HttpListenerExample
                     resp.Redirect("/");
                 }
 
+                if ((req.HttpMethod == "GET") && (req.Url.AbsolutePath == "/form_regestration"))
+                {
+                    if (IsAuthorized(req))
+                    {
+                        page = GetPage("/account.html");
+                    }
+                    else
+                    {
+                        page = GetPage("/regestration.html");
+                    }
+                }
+
+                if ((req.HttpMethod == "POST") && (req.Url.AbsolutePath == "/regestration"))
+                {
+                    Stream body = req.InputStream;
+                    Encoding encoding = req.ContentEncoding;
+                    StreamReader reader = new(body, encoding);
+
+                    string request = reader.ReadToEnd();
+                    string[] credential = request.Split('&');
+                    string login = credential[0].Split('=')[1];
+                    string password = credential[1].Split('=')[1];
+                    body.Close();
+                    reader.Close();
+
+                    Model.User newUser = new(login, password);
+                    string sessionId = GenerateSession(login);
+
+                    Database.TableUsers.users.Add(sessionId, newUser);
+                    Cookie cookie = new(COOKIE_KEY, sessionId);
+                    resp.Cookies.Add(cookie);
+
+                    resp.Redirect("/account");
+                }
+
                 if ((req.HttpMethod == "POST") && (req.Url.AbsolutePath == "/authorization"))
                 {
                     Stream body = req.InputStream;
@@ -94,11 +128,11 @@ namespace HttpListenerExample
                     body.Close();
                     reader.Close();
 
-                    if (users.ContainsKey(login))
+                    if (Database.TableUsers.users.ContainsKey(login))
                     {
-                        if (users[login].Equals(password))
+                        if (Database.TableUsers.users[login].Equals(password))
                         {
-                            Cookie cookie = new(COOKIE_KEY, login);
+                            Cookie cookie = new(COOKIE_KEY, GenerateSession(login));
                             resp.Cookies.Add(cookie);
 
                             resp.Redirect("/account");
@@ -117,6 +151,11 @@ namespace HttpListenerExample
                 await resp.OutputStream.WriteAsync(data);
                 resp.Close();
             } 
+        }
+
+        public static string GenerateSession(string login)
+        {
+            return DateTime.Now.ToString() + login;
         }
 
         public static bool IsAuthorized(HttpListenerRequest req)
