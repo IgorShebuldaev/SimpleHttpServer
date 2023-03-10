@@ -6,7 +6,15 @@ using System.IO;
 using System.Collections.Generic;
 
 namespace HttpListenerExample
-{
+{   
+    struct User{
+        public string login;
+        public string password;
+        public User(string login, string password) { 
+            this.login = login;
+            this.password = password;
+        }
+    }
     class HttpServer
     {
         public static HttpListener listener;
@@ -16,6 +24,7 @@ namespace HttpListenerExample
         public static async Task HandleIncomingConnections()
         {
             string page = GetPage("/index.html");
+            IDictionary<string, User> users = new Dictionary<string, User>();
             
             while (true)
             {
@@ -42,22 +51,6 @@ namespace HttpListenerExample
                     }   
                 }
 
-                if ((req.HttpMethod == "GET") && (req.Url.AbsolutePath == "/login"))
-                {   if (IsAuthorized(req))
-                    {
-                        resp.Redirect("account");
-                    }
-                    else {
-                        page = GetPage("/login.html");
-                    }              
-                }
-
-                //TODO close direct access
-                if ((req.HttpMethod == "GET") && (req.Url.AbsolutePath == "/invalid"))
-                {
-                    page = GetPage("/invalid.html"); 
-                }
-
                 if ((req.HttpMethod == "GET") && (req.Url.AbsolutePath == "/account"))
                 {
                     if (IsAuthorized(req))
@@ -69,53 +62,19 @@ namespace HttpListenerExample
                     } 
                 }
 
-                if ((req.HttpMethod == "GET") && (req.Url.AbsolutePath == "/logout"))
-                {
-                    Cookie cookie = new(COOKIE_KEY, null)
-                    {
-                        Expires = DateTime.Now.AddDays(-1)
-                    };
-                    resp.SetCookie(cookie);
-
-                    resp.Redirect("/");
-                }
-
-                if ((req.HttpMethod == "GET") && (req.Url.AbsolutePath == "/form_regestration"))
+                if ((req.HttpMethod == "GET") && (req.Url.AbsolutePath == "/signin"))
                 {
                     if (IsAuthorized(req))
                     {
-                        page = GetPage("/account.html");
+                        resp.Redirect("/account");
                     }
                     else
                     {
-                        page = GetPage("/regestration.html");
+                        page = GetPage("/signin.html");
                     }
                 }
 
-                if ((req.HttpMethod == "POST") && (req.Url.AbsolutePath == "/regestration"))
-                {
-                    Stream body = req.InputStream;
-                    Encoding encoding = req.ContentEncoding;
-                    StreamReader reader = new(body, encoding);
-
-                    string request = reader.ReadToEnd();
-                    string[] credential = request.Split('&');
-                    string login = credential[0].Split('=')[1];
-                    string password = credential[1].Split('=')[1];
-                    body.Close();
-                    reader.Close();
-
-                    Model.User newUser = new(login, password);
-                    string sessionId = GenerateSession(login);
-
-                    Database.TableUsers.users.Add(sessionId, newUser);
-                    Cookie cookie = new(COOKIE_KEY, sessionId);
-                    resp.Cookies.Add(cookie);
-
-                    resp.Redirect("/account");
-                }
-
-                if ((req.HttpMethod == "POST") && (req.Url.AbsolutePath == "/authorization"))
+                if ((req.HttpMethod == "POST") && (req.Url.AbsolutePath == "/signin"))
                 {
                     Stream body = req.InputStream;
                     Encoding encoding = req.ContentEncoding;
@@ -129,11 +88,11 @@ namespace HttpListenerExample
                     body.Close();
                     reader.Close();
 
-                    foreach (KeyValuePair<string, Model.User> entry in Database.TableUsers.users)
+                    foreach (KeyValuePair<string, User> entry in users)
                     {
-                        if (entry.Value.Login.Equals(login))
+                        if (entry.Value.login.Equals(login))
                         {
-                            if (entry.Value.Password.Equals(password))
+                            if (entry.Value.password.Equals(password))
                             {
                                 Cookie cookie = new(COOKIE_KEY, GenerateSession(login));
                                 resp.Cookies.Add(cookie);
@@ -148,6 +107,58 @@ namespace HttpListenerExample
                     {
                         resp.Redirect("/invalid");
                     }      
+                }
+
+                if ((req.HttpMethod == "GET") && (req.Url.AbsolutePath == "/signup"))
+                {
+                    if (IsAuthorized(req))
+                    {
+                        page = GetPage("/account.html");
+                    }
+                    else
+                    {
+                        page = GetPage("/signup.html");
+                    }
+                }
+
+                if ((req.HttpMethod == "POST") && (req.Url.AbsolutePath == "/signup"))
+                {
+                    Stream body = req.InputStream;
+                    Encoding encoding = req.ContentEncoding;
+                    StreamReader reader = new(body, encoding);
+
+                    string request = reader.ReadToEnd();
+                    string[] credential = request.Split('&');
+                    string login = credential[0].Split('=')[1];
+                    string password = credential[1].Split('=')[1];
+                    body.Close();
+                    reader.Close();
+
+                    User newUser = new(login, password);
+                    string sessionId = GenerateSession(login);
+
+                    users.Add(sessionId, newUser);
+                    Cookie cookie = new(COOKIE_KEY, sessionId);
+                    resp.Cookies.Add(cookie);
+
+                    resp.Redirect("/account");
+                }
+
+                if ((req.HttpMethod == "GET") && (req.Url.AbsolutePath == "/logout"))
+                {
+                    Cookie cookie = new(COOKIE_KEY, null)
+                    {
+                        Expires = DateTime.Now.AddDays(-1)
+                    };
+                    resp.SetCookie(cookie);
+
+                    resp.Redirect("/");
+                }
+
+                //TODO close direct access
+                if ((req.HttpMethod == "GET") && (req.Url.AbsolutePath == "/invalid"))
+                {
+                    page = GetPage("/invalid.html");
                 }
 
                 byte[] data = Encoding.UTF8.GetBytes(page);

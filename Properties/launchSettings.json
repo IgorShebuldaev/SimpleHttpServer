@@ -2,7 +2,7 @@
   "profiles": {
     "SimpleHttpServer": {
       "commandName": "Project",
-      "workingDirectory": "C:\\Users\\wannaasbird\\source\\repos\\SimpleHttpServer"
+      "workingDirectory": "."
     }
   }
 }
