@@ -120,6 +120,7 @@ namespace HttpListenerExample
                     Stream body = req.InputStream;
                     Encoding encoding = req.ContentEncoding;
                     StreamReader reader = new(body, encoding);
+                    bool found = false;
 
                     string request = reader.ReadToEnd();
                     string[] credential = request.Split('&');
@@ -128,19 +129,25 @@ namespace HttpListenerExample
                     body.Close();
                     reader.Close();
 
-                    if (Database.TableUsers.users.ContainsKey(login))
+                    foreach (KeyValuePair<string, Model.User> entry in Database.TableUsers.users)
                     {
-                        if (Database.TableUsers.users[login].Equals(password))
+                        if (entry.Value.Login.Equals(login))
                         {
-                            Cookie cookie = new(COOKIE_KEY, GenerateSession(login));
-                            resp.Cookies.Add(cookie);
-
-                            resp.Redirect("/account");
+                            if (entry.Value.Password.Equals(password))
+                            {
+                                Cookie cookie = new(COOKIE_KEY, GenerateSession(login));
+                                resp.Cookies.Add(cookie);
+                                found = true;
+                                resp.Redirect("/account");
+                                break;
+                            }
                         }
-                    } else
+                    }
+
+                    if (!found)
                     {
                         resp.Redirect("/invalid");
-                    }     
+                    }      
                 }
 
                 byte[] data = Encoding.UTF8.GetBytes(page);

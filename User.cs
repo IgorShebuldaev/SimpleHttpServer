@@ -5,17 +5,17 @@ namespace Model
 {
 	public class User
 	{
-        private readonly string login;
-        private readonly string password;
+        private string login;
+        private string password;
 		public string Login
 		{
-			get;
-		} = string.Empty;
+			get { return login; }
+		}
 
 		public string Password
 		{
-			get;
-		} = string.Empty;
+			get { return password;  }
+		}
 
 		public User(string login, string password)
 		{
